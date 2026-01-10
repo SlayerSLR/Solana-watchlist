@@ -70,7 +70,7 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
       {/* Main Stats Grid */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
-          <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">Current MC</p>
+          <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">Current Mcap</p>
           <p className="text-sm font-semibold text-zinc-100 font-mono">{formatCurrency(token.currentMcap)}</p>
         </div>
         <div>
@@ -78,7 +78,7 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
           <p className="text-sm font-semibold text-emerald-500 font-mono">{formatCurrency(token.maxMcap)}</p>
         </div>
         <div>
-          <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">Entry MC</p>
+          <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">Initial Scan</p>
           <p className="text-sm font-semibold text-zinc-400 font-mono">{formatCurrency(token.initialMcap)}</p>
         </div>
         <div>

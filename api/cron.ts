@@ -19,14 +19,19 @@ async function fetchMultipleTokens(addresses: string[]) {
         data.pairs.forEach((pair: any) => {
           if (pair.chainId === 'solana') {
             const address = pair.baseToken.address;
-            if (!results.has(address) || (results.get(address)?.fdv || 0) < (pair.fdv || 0)) {
+            const pairLiquidity = pair.liquidity?.usd || 0;
+            const existing = results.get(address);
+            
+            // Prioritize higher liquidity to avoid inflated prices from low-liquidity "ghost" pools
+            if (!existing || pairLiquidity > (existing.liquidityUsd || 0)) {
                results.set(address, {
-                currentMcap: pair.fdv || pair.marketCap || 0,
+                currentMcap: pair.marketCap || pair.fdv || 0,
                 volume24h: pair.volume?.h24 || 0,
                 volume1h: pair.volume?.h1 || 0,
                 priceNative: pair.priceNative,
                 priceUsd: pair.priceUsd,
-                fdv: pair.fdv || 0
+                fdv: pair.fdv || 0,
+                liquidityUsd: pairLiquidity
               });
             }
           }

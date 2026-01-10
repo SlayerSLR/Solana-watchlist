@@ -54,7 +54,7 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
 
       <div className="flex-1 grid grid-cols-2 md:grid-cols-7 gap-4">
         <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Current MC</p>
+          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Current Mcap</p>
           <p className="text-xs font-semibold text-zinc-200 font-mono">{formatCurrency(token.currentMcap)}</p>
         </div>
         <div>
@@ -76,7 +76,7 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
           <p className="text-xs font-semibold text-zinc-200 font-mono">{formatCurrency(token.volume24h)}</p>
         </div>
         <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Entry MC</p>
+          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Initial Scan</p>
           <p className="text-xs font-semibold text-zinc-400 font-mono">{formatCurrency(token.initialMcap)}</p>
         </div>
         <div className="flex flex-col justify-center">
