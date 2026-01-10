@@ -1,12 +1,42 @@
 
-import { fetchMultipleTokens } from '../services/dexscreener';
-
 export const config = {
   runtime: 'edge',
 };
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const API_BASE = 'https://api.dexscreener.com/latest/dex/tokens';
+
+async function fetchMultipleTokens(addresses: string[]) {
+  const results = new Map<string, any>();
+  const chunks = [];
+  for (let i = 0; i < addresses.length; i += 30) chunks.push(addresses.slice(i, i + 30));
+
+  for (const chunk of chunks) {
+    try {
+      const response = await fetch(`${API_BASE}/${chunk.join(',')}`);
+      const data = await response.json();
+      if (data.pairs) {
+        data.pairs.forEach((pair: any) => {
+          if (pair.chainId === 'solana') {
+            const address = pair.baseToken.address;
+            if (!results.has(address) || (results.get(address)?.fdv || 0) < (pair.fdv || 0)) {
+               results.set(address, {
+                currentMcap: pair.fdv || pair.marketCap || 0,
+                volume24h: pair.volume?.h24 || 0,
+                volume1h: pair.volume?.h1 || 0,
+                priceNative: pair.priceNative,
+                priceUsd: pair.priceUsd,
+                fdv: pair.fdv || 0
+              });
+            }
+          }
+        });
+      }
+    } catch (e) { console.error(e); }
+  }
+  return results;
+}
 
 export default async function handler(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -19,7 +49,6 @@ export default async function handler(request: Request) {
   }
 
   try {
-    // 1. Fetch all watchlists from Supabase
     const response = await fetch(`${SUPABASE_URL}/rest/v1/watchlists?select=*`, {
       headers: {
         'apikey': SUPABASE_KEY,
@@ -27,13 +56,10 @@ export default async function handler(request: Request) {
       },
     });
     
-    if (!response.ok) {
-      const err = await response.text();
-      return new Response(`Supabase fetch failed: ${err}`, { status: 500 });
-    }
+    if (!response.ok) return new Response('Supabase fetch failed', { status: 500 });
 
     const watchlists = await response.json();
-    if (!watchlists || watchlists.length === 0) return new Response('No watchlists to process');
+    if (!watchlists || watchlists.length === 0) return new Response('No watchlists');
 
     for (const item of watchlists) {
       const { id, data: groups } = item;
@@ -42,7 +68,6 @@ export default async function handler(request: Request) {
       const allAddresses = Array.from(new Set(groups.flatMap((g: any) => g.tokens?.map((t: any) => t.address) || [])));
       if (allAddresses.length === 0) continue;
 
-      // 2. Refresh market data
       const updatedDataMap = await fetchMultipleTokens(allAddresses as string[]);
       
       let modified = false;
@@ -57,19 +82,12 @@ export default async function handler(request: Request) {
             const currentDrawdown = newMaxMcap > 0 ? ((currentMcap - newMaxMcap) / newMaxMcap) * 100 : 0;
             const newMaxDrawdown = Math.min(token.maxDrawdown || 0, currentDrawdown);
 
-            return {
-              ...token,
-              ...newData,
-              maxMcap: newMaxMcap,
-              maxDrawdown: newMaxDrawdown,
-              lastUpdated: Date.now()
-            };
+            return { ...token, ...newData, maxMcap: newMaxMcap, maxDrawdown: newMaxDrawdown, lastUpdated: Date.now() };
           }
           return token;
         })
       }));
 
-      // 3. Save updates back to Supabase
       if (modified) {
         await fetch(`${SUPABASE_URL}/rest/v1/watchlists?id=eq.${id}`, {
           method: 'PATCH',
@@ -78,19 +96,13 @@ export default async function handler(request: Request) {
             'Authorization': `Bearer ${SUPABASE_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            data: updatedGroups,
-            updated_at: new Date().toISOString()
-          }),
+          body: JSON.stringify({ data: updatedGroups, updated_at: new Date().toISOString() }),
         });
       }
     }
 
-    return new Response(JSON.stringify({ success: true, count: watchlists.length }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
   } catch (error: any) {
-    console.error('Cron error:', error);
     return new Response(`Cron Error: ${error.message}`, { status: 500 });
   }
 }
