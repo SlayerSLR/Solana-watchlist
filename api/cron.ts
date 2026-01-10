@@ -1,10 +1,9 @@
-
 export const config = {
   runtime: 'edge',
 };
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 const API_BASE = 'https://api.dexscreener.com/latest/dex/tokens';
 
 async function fetchMultipleTokens(addresses: string[]) {

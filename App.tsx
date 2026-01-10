@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Share2, Database, ShieldAlert, Layers, Search, CloudOff, Globe } from 'lucide-react';
+import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Share2, Database, ShieldAlert, Layers, Search, CloudOff, Globe, Cloud } from 'lucide-react';
 import { WatchlistToken, LayoutMode, SortField, SortDirection, WatchlistGroup } from './types';
 import { fetchTokenData, fetchMultipleTokens } from './services/dexscreener';
 import TokenCard from './components/TokenCard';
@@ -50,22 +50,28 @@ const App: React.FC = () => {
       setIsLoading(true);
       try {
         const res = await fetch(`/api/watchlist?id=${watchlistId}`);
-        const result = await res.json();
+        const contentType = res.headers.get("content-type");
         
-        if (res.ok && !result.error) {
-          setIsCloudEnabled(true);
-          if (result && Array.isArray(result)) {
-            setGroups(result);
-            if (result[0]) setActiveGroupId(result[0].id);
+        if (res.ok && contentType && contentType.includes("application/json")) {
+          const result = await res.json();
+          if (result && !result.error) {
+            setIsCloudEnabled(true);
+            const watchlistData = result.data;
+            if (watchlistData && Array.isArray(watchlistData)) {
+              setGroups(watchlistData);
+              if (watchlistData[0]) setActiveGroupId(watchlistData[0].id);
+            }
+          } else if (result?.error?.includes('keys missing')) {
+            setIsCloudEnabled(false);
+          } else {
+            setDbError(result?.error || "Sync Error");
           }
-        } else if (result.error && result.error.includes('keys missing')) {
-          // Stay in Local Mode
-          setIsCloudEnabled(false);
         } else {
-          setDbError(result.error || "Connection Issue");
+          // If response isn't JSON or not OK, we stay in Local Mode
+          setIsCloudEnabled(false);
         }
       } catch (e: any) {
-        // Fallback to local mode silently if API fails
+        console.error("Cloud Connection Failed:", e.message);
         setIsCloudEnabled(false);
       } finally {
         setIsLoading(false);
@@ -90,9 +96,13 @@ const App: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(groups)
         });
-        const result = await res.json();
-        if (!res.ok || result.error) throw new Error(result.error || "Sync error");
-        setDbError(null);
+        
+        const contentType = res.headers.get("content-type");
+        if (res.ok && contentType && contentType.includes("application/json")) {
+          const result = await res.json();
+          if (result && result.error) throw new Error(result.error);
+          setDbError(null);
+        }
       } catch (e) {
         setDbError("Sync paused");
       }
@@ -216,7 +226,7 @@ const App: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500 font-mono text-sm">
       <div className="flex flex-col items-center gap-4">
         <Database className="animate-pulse text-emerald-500" size={32} />
-        <p className="tracking-widest uppercase text-[10px]">Initalizing Secure Vault...</p>
+        <p className="tracking-widest uppercase text-[10px]">Accessing Vault...</p>
       </div>
     </div>
   );
@@ -349,11 +359,11 @@ const App: React.FC = () => {
               <Layers size={14} className="text-zinc-600" /> TRACKED: {totalTokens}
             </span>
             <span className={`flex items-center gap-2.5 px-3 py-1.5 rounded-full border bg-zinc-950/50 ${!isCloudEnabled ? 'text-zinc-500 border-zinc-800' : dbError ? 'text-rose-500 border-rose-500/20' : 'text-emerald-500/80 border-emerald-500/10'}`}>
-              {!isCloudEnabled ? <CloudOff size={14} /> : <Database size={14} />} 
-              {!isCloudEnabled ? 'LOCAL MODE' : dbError ? `SYNC DISCONNECTED` : `VAULT SYNCED: ${new Date(lastSaved).toLocaleTimeString()}`}
+              {!isCloudEnabled ? <CloudOff size={14} /> : <Cloud size={14} className="text-emerald-500" />} 
+              {!isCloudEnabled ? 'LOCAL MODE' : dbError ? `SYNC DISCONNECTED` : `CLOUD MODE: ${new Date(lastSaved).toLocaleTimeString()}`}
             </span>
           </div>
-          <p className="opacity-30 font-mono tracking-tighter">SW-PRO v3.2.2 • BUILT FOR DEGENS</p>
+          <p className="opacity-30 font-mono tracking-tighter">SW-PRO v3.2.5 • BUILT FOR DEGENS</p>
         </div>
       </footer>
     </div>
