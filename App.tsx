@@ -6,6 +6,10 @@ import { fetchTokenData, fetchMultipleTokens } from './services/dexscreener';
 import TokenCard from './components/TokenCard';
 import TokenRow from './components/TokenRow';
 
+// Supabase Direct Config
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+
 const App: React.FC = () => {
   const [watchlistId, setWatchlistId] = useState<string>(() => {
     const hashId = window.location.hash.replace('#', '');
@@ -37,32 +41,39 @@ const App: React.FC = () => {
     localStorage.setItem('solana-watchlist-id', watchlistId);
   }, [watchlistId]);
 
+  // Direct Supabase GET
   useEffect(() => {
     const loadData = async () => {
+      if (!SUPABASE_URL || !SUPABASE_KEY) {
+        setDbError("Supabase Keys Missing");
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       setDbError(null);
       try {
-        const res = await fetch(`/api/watchlist?id=${watchlistId}`);
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/watchlists?id=eq.${watchlistId}&select=data`, {
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+          }
+        });
         
         if (!res.ok) {
           const text = await res.text();
-          let errorMessage = 'Server error';
-          try {
-            const json = JSON.parse(text);
-            errorMessage = json.error || json.message || errorMessage;
-          } catch (e) {
-            errorMessage = text || errorMessage;
-          }
-          throw new Error(errorMessage);
+          throw new Error(`DB Error: ${res.status}`);
         }
         
         const data = await res.json();
-        if (data && Array.isArray(data)) {
-          setGroups(data);
-          if (data[0]) setActiveGroupId(data[0].id);
+        const watchlistData = Array.isArray(data) && data.length > 0 ? data[0].data : null;
+        
+        if (watchlistData && Array.isArray(watchlistData)) {
+          setGroups(watchlistData);
+          if (watchlistData[0]) setActiveGroupId(watchlistData[0].id);
         }
       } catch (e: any) {
-        console.error("Cloud Sync Error:", e.message);
+        console.error("Cloud Load Error:", e.message);
         setDbError(e.message);
       } finally {
         setIsLoading(false);
@@ -71,30 +82,39 @@ const App: React.FC = () => {
     loadData();
   }, [watchlistId]);
 
+  // Direct Supabase POST (Upsert)
   useEffect(() => {
-    if (isLoading || dbError) return;
+    if (isLoading || dbError === "Supabase Keys Missing") return;
+    
     const timer = setTimeout(async () => {
+      if (!SUPABASE_URL || !SUPABASE_KEY) return;
+
       try {
-        const res = await fetch(`/api/watchlist?id=${watchlistId}`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/watchlists`, {
           method: 'POST',
-          body: JSON.stringify(groups)
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates'
+          },
+          body: JSON.stringify({
+            id: watchlistId,
+            data: groups,
+            updated_at: new Date().toISOString()
+          })
         });
+
         if (res.ok) {
           setLastSaved(Date.now());
           setDbError(null);
         } else {
-          const text = await res.text();
-          try {
-            const json = JSON.parse(text);
-            setDbError(json.error || "Save Failed");
-          } catch (e) {
-            setDbError(text.slice(0, 50) || "Save Failed");
-          }
+          setDbError(`Save Failed (${res.status})`);
         }
       } catch (e) {
-        setDbError("Network Error");
+        setDbError("Connection Timeout");
       }
-    }, 1500);
+    }, 2000);
     return () => clearTimeout(timer);
   }, [groups, watchlistId, isLoading, dbError]);
 
@@ -133,7 +153,7 @@ const App: React.FC = () => {
         })
       })));
     } catch (err) {
-      // background fail is silent
+      // background refresh fail is silent
     } finally {
       if (isManual) setIsRefreshing(false);
       isRefreshingRef.current = false;
@@ -141,7 +161,7 @@ const App: React.FC = () => {
   }, [groups, totalTokens]);
 
   useEffect(() => {
-    const interval = setInterval(() => refreshAllTokens(false), 5000);
+    const interval = setInterval(() => refreshAllTokens(false), 8000);
     return () => clearInterval(interval);
   }, [refreshAllTokens]);
 
@@ -220,7 +240,7 @@ const App: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500 font-mono text-sm">
       <div className="flex flex-col items-center gap-4">
         <Database className="animate-pulse text-emerald-500" size={32} />
-        <p>Connecting to Cloud Vault...</p>
+        <p className="tracking-widest uppercase text-[10px]">Accessing Cloud Vault...</p>
       </div>
     </div>
   );
@@ -262,15 +282,17 @@ const App: React.FC = () => {
               <button onClick={() => setLayout('grid')} className={`p-2 rounded-md ${layout === 'grid' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500'}`}><LayoutGrid size={18} /></button>
               <button onClick={() => setLayout('list')} className={`p-2 rounded-md ${layout === 'list' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500'}`}><List size={18} /></button>
             </div>
-            <button onClick={() => refreshAllTokens(true)} disabled={isRefreshing} className="p-3 bg-zinc-900 text-zinc-400 rounded-xl border border-zinc-800"><RefreshCw className={isRefreshing ? 'animate-spin' : ''} size={18} /></button>
+            <button onClick={() => refreshAllTokens(true)} disabled={isRefreshing} className="p-3 bg-zinc-900 text-zinc-400 rounded-xl border border-zinc-800 hover:text-emerald-400 transition-colors">
+              <RefreshCw className={isRefreshing ? 'animate-spin' : ''} size={18} />
+            </button>
           </div>
         </div>
       </header>
 
       {dbError && (
-        <div className="bg-rose-500/10 border-b border-rose-500/20 px-8 py-2 flex items-center justify-center gap-2 text-rose-400 text-xs font-bold uppercase tracking-widest">
+        <div className="bg-rose-500/10 border-b border-rose-500/20 px-8 py-2 flex items-center justify-center gap-2 text-rose-400 text-[10px] font-bold uppercase tracking-widest">
            <ShieldAlert size={14} />
-           Cloud Connectivity Limited: {dbError}
+           DB Status: {dbError} • Using Local Cache
         </div>
       )}
 
@@ -301,7 +323,7 @@ const App: React.FC = () => {
           <h2 className="text-xl font-bold text-zinc-100">{activeGroup.name}</h2>
           <div className="flex flex-wrap items-center gap-2">
             {(['currentMcap', 'volume24h', 'maxMcap', 'athROI', 'addedAt'] as SortField[]).map(field => (
-              <button key={field} onClick={() => { if (sortBy === field) setSortDirection(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy(field); setSortDirection('desc'); } }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${sortBy === field ? 'bg-emerald-600/10 border-emerald-500/50 text-emerald-400' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}>
+              <button key={field} onClick={() => { if (sortBy === field) setSortDirection(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy(field); setSortDirection('desc'); } }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${sortBy === field ? 'bg-emerald-600/10 border-emerald-500/50 text-emerald-400 shadow-[0_0_10px_-2px_rgba(16,185,129,0.3)]' : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'}`}>
                 {field === 'currentMcap' ? 'MC' : field === 'volume24h' ? 'Vol' : field === 'maxMcap' ? 'ATH' : field === 'athROI' ? 'ROI' : 'Date'}
                 {sortBy === field && (sortDirection === 'desc' ? ' ↓' : ' ↑')}
               </button>
@@ -311,8 +333,9 @@ const App: React.FC = () => {
 
         {activeGroup.tokens?.length === 0 ? (
           <div className="glass rounded-2xl p-20 text-center border-dashed border-2 border-zinc-800 text-zinc-500">
-             <TrendingUp size={48} className="mx-auto mb-4 opacity-20" />
-             <p>Track your first token in {activeGroup.name}.</p>
+             <TrendingUp size={48} className="mx-auto mb-4 opacity-10" />
+             <p className="text-sm font-medium">No tokens tracked in this group.</p>
+             <p className="text-xs opacity-50 mt-1">Paste a Solana contract address above to begin monitoring.</p>
           </div>
         ) : (
           <div className={layout === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6' : 'space-y-4'}>
@@ -322,14 +345,14 @@ const App: React.FC = () => {
       </main>
 
       <footer className="fixed bottom-0 left-0 right-0 glass border-t border-zinc-800 p-3 z-50">
-        <div className="max-w-7xl mx-auto flex justify-between items-center text-[10px] text-zinc-500 uppercase tracking-widest px-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center text-[10px] text-zinc-500 uppercase tracking-widest px-4 font-bold">
           <div className="flex gap-6 items-center">
-            <span className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> SOL Mainnet</span>
-            <span className={`flex items-center gap-2 ${dbError ? 'text-rose-400' : 'text-emerald-400'}`}>
-              <Database size={12} /> {dbError ? `Sync Issue: ${dbError}` : `Cloud Safe: ${new Date(lastSaved).toLocaleTimeString()}`}
+            <span className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.8)]"></div> SOL Mainnet</span>
+            <span className={`flex items-center gap-2 ${dbError ? 'text-rose-400' : 'text-emerald-400/80'}`}>
+              <Database size={12} /> {dbError ? `Sync Issue: ${dbError}` : `Cloud Synced: ${new Date(lastSaved).toLocaleTimeString()}`}
             </span>
           </div>
-          <p className="hidden md:block">Watchlist Suite v2.7 • Live Status</p>
+          <p className="hidden md:block">Watchlist Suite • v2.8 Direct API</p>
         </div>
       </footer>
     </div>
