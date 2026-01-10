@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Share2, Database, ShieldAlert, Layers, Search, CloudOff, Globe, Cloud } from 'lucide-react';
+import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Share2, Database, ShieldAlert, Layers, Search, CloudOff, Globe, Cloud, Filter } from 'lucide-react';
 import { WatchlistToken, LayoutMode, SortField, SortDirection, WatchlistGroup } from './types';
 import { fetchTokenData, fetchMultipleTokens } from './services/dexscreener';
 import TokenCard from './components/TokenCard';
@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const [activeGroupId, setActiveGroupId] = useState<string>('default');
   const [layout, setLayout] = useState<LayoutMode>('grid');
   const [newAddress, setNewAddress] = useState('');
+  const [localSearchTerm, setLocalSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,7 +68,6 @@ const App: React.FC = () => {
             setDbError(result?.error || "Sync Error");
           }
         } else {
-          // If response isn't JSON or not OK, we stay in Local Mode
           setIsCloudEnabled(false);
         }
       } catch (e: any) {
@@ -209,7 +209,17 @@ const App: React.FC = () => {
   };
 
   const sortedTokens = useMemo(() => {
-    return [...(activeGroup.tokens || [])].sort((a, b) => {
+    const filtered = (activeGroup.tokens || []).filter(t => {
+      if (!localSearchTerm) return true;
+      const term = localSearchTerm.toLowerCase();
+      return (
+        t.name.toLowerCase().includes(term) ||
+        t.symbol.toLowerCase().includes(term) ||
+        t.address.toLowerCase().includes(term)
+      );
+    });
+
+    return [...filtered].sort((a, b) => {
       let valA: number, valB: number;
       if (sortBy === 'athROI') {
         valA = ((a.maxMcap - a.initialMcap) / (a.initialMcap || 1)) * 100;
@@ -220,7 +230,7 @@ const App: React.FC = () => {
       }
       return sortDirection === 'desc' ? valB - valA : valA - valB;
     });
-  }, [activeGroup.tokens, sortBy, sortDirection]);
+  }, [activeGroup.tokens, sortBy, sortDirection, localSearchTerm]);
 
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500 font-mono text-sm">
@@ -255,15 +265,12 @@ const App: React.FC = () => {
 
           <div className="flex flex-1 max-w-xl">
             <form onSubmit={addToken} className="relative w-full group">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-emerald-500 transition-colors">
-                <Search size={16} />
-              </div>
               <input
                 type="text"
                 placeholder={`Paste CA to monitor in ${activeGroup.name}...`}
                 value={newAddress}
                 onChange={(e) => setNewAddress(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3.5 pl-11 pr-14 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/5 text-white placeholder-zinc-600 transition-all font-medium"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3.5 pl-5 pr-14 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/5 text-white placeholder-zinc-600 transition-all font-medium"
               />
               <button type="submit" disabled={isAdding} className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 disabled:opacity-50 shadow-lg shadow-emerald-600/20 transition-all active:scale-90 flex items-center justify-center">
                 {isAdding ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={20} />}
@@ -294,7 +301,7 @@ const App: React.FC = () => {
         <div className="mb-8 flex flex-wrap items-center gap-2 border-b border-zinc-800/50 pb-1 overflow-x-auto no-scrollbar">
           {groups.map(group => (
             <div key={group.id} className="relative group/tab">
-              <button onClick={() => setActiveGroupId(group.id)} className={`px-5 py-4 text-xs font-black uppercase tracking-widest rounded-t-xl transition-all whitespace-nowrap flex items-center gap-3 border-b-2 ${activeGroupId === group.id ? 'bg-emerald-600/5 border-emerald-500 text-emerald-400' : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/30'}`}>
+              <button onClick={() => setActiveGroupId(group.id)} className={`px-3 py-2 text-xs font-black uppercase tracking-widest rounded-t-xl transition-all whitespace-nowrap flex items-center gap-3 border-b-2 ${activeGroupId === group.id ? 'bg-emerald-600/5 border-emerald-500 text-emerald-400' : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/30'}`}>
                 {editingGroupId === group.id ? (
                   <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
                     <input autoFocus type="text" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveRename()} className="bg-zinc-950 border border-zinc-700 rounded-lg px-2 py-1 text-[10px] text-white outline-none focus:border-emerald-500 w-32" />
@@ -315,13 +322,36 @@ const App: React.FC = () => {
               </button>
             </div>
           ))}
-          <button onClick={createGroup} className="px-5 py-4 text-zinc-600 hover:text-emerald-400 transition-all flex items-center gap-1.5 text-xs font-black uppercase tracking-widest"><Plus size={16} /> NEW LIST</button>
+          <button onClick={createGroup} className="px-3 py-2 text-zinc-600 hover:text-emerald-400 transition-all flex items-center gap-1.5 text-xs font-black uppercase tracking-widest"><Plus size={16} /> NEW LIST</button>
         </div>
 
-        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-black text-white tracking-tight">{activeGroup.name}</h2>
+        <div className="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="flex flex-col md:flex-row md:items-center gap-6 flex-1">
+            <h2 className="text-2xl font-black text-white tracking-tight shrink-0">{activeGroup.name}</h2>
+            
+            {/* Local Filter Search */}
+            <div className="relative w-full max-w-sm group">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-emerald-500 transition-colors">
+                <Filter size={14} />
+              </div>
+              <input
+                type="text"
+                placeholder="Find in this list..."
+                value={localSearchTerm}
+                onChange={(e) => setLocalSearchTerm(e.target.value)}
+                className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl py-2.5 pl-10 pr-4 text-xs focus:outline-none focus:border-emerald-500/30 text-zinc-300 placeholder-zinc-700 transition-all font-medium"
+              />
+              {localSearchTerm && (
+                <button 
+                  onClick={() => setLocalSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
+
           <div className="flex flex-wrap items-center gap-1.5 bg-zinc-900/50 p-1.5 rounded-2xl border border-zinc-800/80 shadow-inner">
             <span className="text-[9px] text-zinc-600 font-black uppercase tracking-[0.2em] pl-3 pr-2">Order By</span>
             {(['currentMcap', 'volume24h', 'maxMcap', 'athROI', 'addedAt'] as SortField[]).map(field => (
@@ -343,6 +373,11 @@ const App: React.FC = () => {
                 <h3 className="text-lg font-black text-zinc-400 uppercase tracking-[0.2em] mb-3">Your list is empty</h3>
                 <p className="text-sm text-zinc-600 font-medium max-w-sm mx-auto leading-relaxed">Paste a contract address in the search bar above to begin tracking professional Solana on-chain data.</p>
              </div>
+          </div>
+        ) : sortedTokens.length === 0 ? (
+          <div className="py-20 text-center">
+            <AlertCircle size={32} className="mx-auto text-zinc-700 mb-4" />
+            <p className="text-zinc-500 text-sm font-black uppercase tracking-widest">No results found for "{localSearchTerm}"</p>
           </div>
         ) : (
           <div className={layout === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8' : 'space-y-4'}>
