@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { WatchlistToken } from '../types';
-import { ExternalLink, Trash2, BarChart3, TrendingUp, TrendingDown } from 'lucide-react';
+import { ExternalLink, Trash2, BarChart3, TrendingUp, TrendingDown, Copy, Check } from 'lucide-react';
 
 interface Props {
   token: WatchlistToken;
@@ -9,10 +9,18 @@ interface Props {
 }
 
 const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
+  const [copied, setCopied] = useState(false);
+
   const formatCurrency = (val: number) => {
     if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(2)}M`;
     if (val >= 1_000) return `$${(val / 1_000).toFixed(1)}K`;
     return `$${val.toFixed(2)}`;
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(token.address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const currentGain = ((token.currentMcap - token.initialMcap) / (token.initialMcap || 1)) * 100;
@@ -31,7 +39,16 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
         </div>
         <div className="min-w-0">
           <h3 className="font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate text-sm">{token.symbol}</h3>
-          <p className="text-[10px] text-zinc-600 mono truncate">{token.address.slice(0, 4)}...{token.address.slice(-4)}</p>
+          <div className="flex items-center gap-1">
+            <p className="text-[10px] text-zinc-600 mono truncate">{token.address.slice(0, 4)}...{token.address.slice(-4)}</p>
+            <button 
+              onClick={handleCopy}
+              className={`transition-colors p-0.5 rounded ${copied ? 'text-emerald-400' : 'text-zinc-700 hover:text-zinc-400'}`}
+              title="Copy CA"
+            >
+              {copied ? <Check size={10} /> : <Copy size={10} />}
+            </button>
+          </div>
         </div>
       </div>
 

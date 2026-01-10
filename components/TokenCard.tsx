@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { WatchlistToken } from '../types';
-import { ExternalLink, BarChart3, Trash2, TrendingUp, TrendingDown, ArrowDownCircle, Target } from 'lucide-react';
+import { ExternalLink, BarChart3, Trash2, TrendingUp, TrendingDown, ArrowDownCircle, Target, Copy, Check } from 'lucide-react';
 
 interface Props {
   token: WatchlistToken;
@@ -9,10 +9,18 @@ interface Props {
 }
 
 const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
+  const [copied, setCopied] = useState(false);
+
   const formatCurrency = (val: number) => {
     if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(2)}M`;
     if (val >= 1_000) return `$${(val / 1_000).toFixed(1)}K`;
     return `$${val.toFixed(2)}`;
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(token.address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const currentGain = ((token.currentMcap - token.initialMcap) / (token.initialMcap || 1)) * 100;
@@ -20,7 +28,7 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
   const isPositive = currentGain >= 0;
 
   return (
-    <div className="glass rounded-xl p-5 hover:border-emerald-500/30 transition-all duration-300 group border border-zinc-800 accent-glow">
+    <div className="glass rounded-xl p-5 hover:border-emerald-500/30 transition-all duration-300 group border border-zinc-800 accent-glow relative">
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center gap-3">
@@ -32,7 +40,16 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
             )}
           </div>
           <div className="min-w-0">
-            <h3 className="font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate">{token.symbol}</h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate">{token.symbol}</h3>
+              <button 
+                onClick={handleCopy}
+                className={`transition-colors p-1 rounded hover:bg-zinc-800 ${copied ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-400'}`}
+                title="Copy Contract Address"
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+              </button>
+            </div>
             <p className="text-[10px] text-zinc-500 truncate mono uppercase">{token.name}</p>
           </div>
         </div>
@@ -43,7 +60,7 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
           </div>
           <button 
             onClick={() => onRemove(token.id)}
-            className="text-zinc-600 hover:text-rose-400 transition-colors p-1"
+            className="text-zinc-700 hover:text-rose-400 transition-colors p-1"
           >
             <Trash2 size={16} />
           </button>
@@ -70,7 +87,7 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
         </div>
       </div>
 
-      {/* Performance Summary Row (ATH Gain & Drawdown side-by-side) */}
+      {/* Performance Summary Row */}
       <div className="flex gap-2 mb-4">
         <div className="flex-1 flex items-center justify-between p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
           <Target size={12} className="text-emerald-500/60" />
