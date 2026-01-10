@@ -1,14 +1,9 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Share2, Database, ShieldAlert, Layers, Search } from 'lucide-react';
+import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Share2, Database, ShieldAlert, Layers, Search, CloudOff, Globe } from 'lucide-react';
 import { WatchlistToken, LayoutMode, SortField, SortDirection, WatchlistGroup } from './types';
 import { fetchTokenData, fetchMultipleTokens } from './services/dexscreener';
 import TokenCard from './components/TokenCard';
 import TokenRow from './components/TokenRow';
-
-// Safely access env vars
-const SUPABASE_URL = (typeof process !== 'undefined' ? process.env.SUPABASE_URL : '')?.replace(/\/$/, '') || '';
-const SUPABASE_KEY = (typeof process !== 'undefined' ? (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY) : '') || '';
 
 const App: React.FC = () => {
   const [watchlistId, setWatchlistId] = useState<string>(() => {
@@ -20,13 +15,21 @@ const App: React.FC = () => {
     return newId;
   });
 
-  const [groups, setGroups] = useState<WatchlistGroup[]>([{ id: 'default', name: 'Main Watchlist', tokens: [] }]);
+  const [groups, setGroups] = useState<WatchlistGroup[]>(() => {
+    const saved = localStorage.getItem(`local-watchlist-data-${watchlistId}`);
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { return [{ id: 'default', name: 'Main Watchlist', tokens: [] }]; }
+    }
+    return [{ id: 'default', name: 'Main Watchlist', tokens: [] }];
+  });
+
   const [activeGroupId, setActiveGroupId] = useState<string>('default');
   const [layout, setLayout] = useState<LayoutMode>('grid');
   const [newAddress, setNewAddress] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCloudEnabled, setIsCloudEnabled] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<number>(Date.now());
   
@@ -41,36 +44,29 @@ const App: React.FC = () => {
     localStorage.setItem('solana-watchlist-id', watchlistId);
   }, [watchlistId]);
 
-  // Load from Cloud
+  // Sync with Cloud via Vercel API
   useEffect(() => {
     const loadData = async () => {
-      if (!SUPABASE_URL || !SUPABASE_KEY) {
-        setDbError("Setup Required: Connect Supabase");
-        setIsLoading(false);
-        return;
-      }
-
       setIsLoading(true);
-      setDbError(null);
       try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/watchlists?id=eq.${watchlistId}&select=data`, {
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
+        const res = await fetch(`/api/watchlist?id=${watchlistId}`);
+        const result = await res.json();
+        
+        if (res.ok && !result.error) {
+          setIsCloudEnabled(true);
+          if (result && Array.isArray(result)) {
+            setGroups(result);
+            if (result[0]) setActiveGroupId(result[0].id);
           }
-        });
-        
-        if (!res.ok) throw new Error(`DB Error: ${res.status}`);
-        
-        const data = await res.json();
-        const watchlistData = Array.isArray(data) && data.length > 0 ? data[0].data : null;
-        
-        if (watchlistData && Array.isArray(watchlistData)) {
-          setGroups(watchlistData);
-          if (watchlistData[0]) setActiveGroupId(watchlistData[0].id);
+        } else if (result.error && result.error.includes('keys missing')) {
+          // Stay in Local Mode
+          setIsCloudEnabled(false);
+        } else {
+          setDbError(result.error || "Connection Issue");
         }
       } catch (e: any) {
-        setDbError(e.message);
+        // Fallback to local mode silently if API fails
+        setIsCloudEnabled(false);
       } finally {
         setIsLoading(false);
       }
@@ -78,34 +74,31 @@ const App: React.FC = () => {
     loadData();
   }, [watchlistId]);
 
-  // Auto-Save
+  // Auto-Save logic
   useEffect(() => {
-    if (isLoading || !SUPABASE_URL || !SUPABASE_KEY) return;
+    if (isLoading) return;
     
+    localStorage.setItem(`local-watchlist-data-${watchlistId}`, JSON.stringify(groups));
+    setLastSaved(Date.now());
+
+    if (!isCloudEnabled) return;
+
     const timer = setTimeout(async () => {
       try {
-        await fetch(`${SUPABASE_URL}/rest/v1/watchlists`, {
+        const res = await fetch(`/api/watchlist?id=${watchlistId}`, {
           method: 'POST',
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates'
-          },
-          body: JSON.stringify({
-            id: watchlistId,
-            data: groups,
-            updated_at: new Date().toISOString()
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(groups)
         });
-        setLastSaved(Date.now());
+        const result = await res.json();
+        if (!res.ok || result.error) throw new Error(result.error || "Sync error");
         setDbError(null);
       } catch (e) {
-        setDbError("Cloud sync offline");
+        setDbError("Sync paused");
       }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [groups, watchlistId, isLoading]);
+  }, [groups, watchlistId, isLoading, isCloudEnabled]);
 
   const activeGroup = useMemo(() => 
     groups.find(g => g.id === activeGroupId) || groups[0] || { id: 'default', name: 'Main', tokens: [] }, 
@@ -141,16 +134,14 @@ const App: React.FC = () => {
           return token;
         })
       })));
-    } catch (err) {
-      // background refresh fail is silent
-    } finally {
+    } catch (err) { /* silent */ } finally {
       if (isManual) setIsRefreshing(false);
       isRefreshingRef.current = false;
     }
   }, [groups, totalTokens]);
 
   useEffect(() => {
-    const interval = setInterval(() => refreshAllTokens(false), 12000);
+    const interval = setInterval(() => refreshAllTokens(false), 15000);
     return () => clearInterval(interval);
   }, [refreshAllTokens]);
 
@@ -225,7 +216,7 @@ const App: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500 font-mono text-sm">
       <div className="flex flex-col items-center gap-4">
         <Database className="animate-pulse text-emerald-500" size={32} />
-        <p className="tracking-widest uppercase text-[10px]">Syncing secure vault...</p>
+        <p className="tracking-widest uppercase text-[10px]">Initalizing Secure Vault...</p>
       </div>
     </div>
   );
@@ -351,17 +342,18 @@ const App: React.FC = () => {
       </main>
 
       <footer className="fixed bottom-0 left-0 right-0 glass border-t border-zinc-800/80 p-4 z-50 shadow-2xl">
-        <div className="max-w-7xl mx-auto flex justify-between items-center text-[10px] text-zinc-500 uppercase tracking-[0.2em] px-4 font-black">
-          <div className="flex gap-8 items-center">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center text-[10px] text-zinc-500 uppercase tracking-[0.2em] px-4 font-black gap-2">
+          <div className="flex flex-wrap gap-4 sm:gap-8 items-center justify-center">
             <span className="flex items-center gap-2.5 bg-zinc-950/50 px-3 py-1.5 rounded-full border border-zinc-800"><div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></div> Solana Mainnet</span>
-            <span className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-zinc-800 bg-zinc-950/50">
-              <Layers size={14} className="text-zinc-600" /> TOTAL TRACKED: {totalTokens}
+            <span className="flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-zinc-800 bg-zinc-950/50">
+              <Layers size={14} className="text-zinc-600" /> TRACKED: {totalTokens}
             </span>
-            <span className={`flex items-center gap-2.5 px-3 py-1.5 rounded-full border bg-zinc-950/50 ${dbError ? 'text-rose-500 border-rose-500/20' : 'text-emerald-500/80 border-emerald-500/10'}`}>
-              <Database size={14} /> {dbError ? `SYNC DISCONNECTED` : `VAULT SYNCED: ${new Date(lastSaved).toLocaleTimeString()}`}
+            <span className={`flex items-center gap-2.5 px-3 py-1.5 rounded-full border bg-zinc-950/50 ${!isCloudEnabled ? 'text-zinc-500 border-zinc-800' : dbError ? 'text-rose-500 border-rose-500/20' : 'text-emerald-500/80 border-emerald-500/10'}`}>
+              {!isCloudEnabled ? <CloudOff size={14} /> : <Database size={14} />} 
+              {!isCloudEnabled ? 'LOCAL MODE' : dbError ? `SYNC DISCONNECTED` : `VAULT SYNCED: ${new Date(lastSaved).toLocaleTimeString()}`}
             </span>
           </div>
-          <p className="hidden md:block opacity-30 font-mono tracking-tighter">SW-PRO v3.2.0 • BUILT FOR DEGENS</p>
+          <p className="opacity-30 font-mono tracking-tighter">SW-PRO v3.2.2 • BUILT FOR DEGENS</p>
         </div>
       </footer>
     </div>
