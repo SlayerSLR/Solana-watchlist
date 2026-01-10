@@ -1,14 +1,15 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Cloud, CloudLightning, Share2, Database, ShieldAlert } from 'lucide-react';
+import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Cloud, CloudLightning, Share2, Database, ShieldAlert, Sparkles, Layers } from 'lucide-react';
 import { WatchlistToken, LayoutMode, SortField, SortDirection, WatchlistGroup } from './types';
 import { fetchTokenData, fetchMultipleTokens } from './services/dexscreener';
+import { analyzeTokenSet } from './services/gemini';
 import TokenCard from './components/TokenCard';
 import TokenRow from './components/TokenRow';
 
-// Supabase Direct Config
-const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+// Safely access env vars
+const SUPABASE_URL = (typeof process !== 'undefined' ? process.env.SUPABASE_URL : '')?.replace(/\/$/, '') || '';
+const SUPABASE_KEY = (typeof process !== 'undefined' ? (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY) : '') || '';
 
 const App: React.FC = () => {
   const [watchlistId, setWatchlistId] = useState<string>(() => {
@@ -30,6 +31,9 @@ const App: React.FC = () => {
   const [dbError, setDbError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<number>(Date.now());
   
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
   const [sortBy, setSortBy] = useState<SortField>('addedAt');
@@ -41,11 +45,11 @@ const App: React.FC = () => {
     localStorage.setItem('solana-watchlist-id', watchlistId);
   }, [watchlistId]);
 
-  // Direct Supabase GET
+  // Load from Cloud
   useEffect(() => {
     const loadData = async () => {
       if (!SUPABASE_URL || !SUPABASE_KEY) {
-        setDbError("Supabase Keys Missing");
+        setDbError("Setup Required: Connect Supabase");
         setIsLoading(false);
         return;
       }
@@ -60,10 +64,7 @@ const App: React.FC = () => {
           }
         });
         
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`DB Error: ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`DB Error: ${res.status}`);
         
         const data = await res.json();
         const watchlistData = Array.isArray(data) && data.length > 0 ? data[0].data : null;
@@ -73,7 +74,6 @@ const App: React.FC = () => {
           if (watchlistData[0]) setActiveGroupId(watchlistData[0].id);
         }
       } catch (e: any) {
-        console.error("Cloud Load Error:", e.message);
         setDbError(e.message);
       } finally {
         setIsLoading(false);
@@ -82,15 +82,13 @@ const App: React.FC = () => {
     loadData();
   }, [watchlistId]);
 
-  // Direct Supabase POST (Upsert)
+  // Auto-Save
   useEffect(() => {
-    if (isLoading || dbError === "Supabase Keys Missing") return;
+    if (isLoading || !SUPABASE_URL || !SUPABASE_KEY) return;
     
     const timer = setTimeout(async () => {
-      if (!SUPABASE_URL || !SUPABASE_KEY) return;
-
       try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/watchlists`, {
+        await fetch(`${SUPABASE_URL}/rest/v1/watchlists`, {
           method: 'POST',
           headers: {
             'apikey': SUPABASE_KEY,
@@ -104,19 +102,14 @@ const App: React.FC = () => {
             updated_at: new Date().toISOString()
           })
         });
-
-        if (res.ok) {
-          setLastSaved(Date.now());
-          setDbError(null);
-        } else {
-          setDbError(`Save Failed (${res.status})`);
-        }
+        setLastSaved(Date.now());
+        setDbError(null);
       } catch (e) {
-        setDbError("Connection Timeout");
+        setDbError("Cloud sync offline");
       }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [groups, watchlistId, isLoading, dbError]);
+  }, [groups, watchlistId, isLoading]);
 
   const activeGroup = useMemo(() => 
     groups.find(g => g.id === activeGroupId) || groups[0] || { id: 'default', name: 'Main', tokens: [] }, 
@@ -161,7 +154,7 @@ const App: React.FC = () => {
   }, [groups, totalTokens]);
 
   useEffect(() => {
-    const interval = setInterval(() => refreshAllTokens(false), 8000);
+    const interval = setInterval(() => refreshAllTokens(false), 12000);
     return () => clearInterval(interval);
   }, [refreshAllTokens]);
 
@@ -173,8 +166,9 @@ const App: React.FC = () => {
 
   const deleteGroup = (id: string) => {
     if (groups.length <= 1) return;
-    setGroups(prev => prev.filter(g => g.id !== id));
-    if (activeGroupId === id) setActiveGroupId(groups[0].id);
+    const remaining = groups.filter(g => g.id !== id);
+    setGroups(remaining);
+    if (activeGroupId === id) setActiveGroupId(remaining[0].id);
   };
 
   const startRenaming = (group: WatchlistGroup) => {
@@ -186,6 +180,19 @@ const App: React.FC = () => {
     if (!editingGroupId || !editNameValue.trim()) return;
     setGroups(prev => prev.map(g => g.id === editingGroupId ? { ...g, name: editNameValue.trim() } : g));
     setEditingGroupId(null);
+  };
+
+  const runAiAnalysis = async () => {
+    if (!activeGroup.tokens?.length || isAnalyzing) return;
+    setIsAnalyzing(true);
+    try {
+      const result = await analyzeTokenSet(activeGroup.tokens);
+      setAnalysisResult(result || "No analysis generated.");
+    } catch (e) {
+      setAnalysisResult("AI module failed to respond.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const addToken = async (e: React.FormEvent) => {
@@ -224,23 +231,18 @@ const App: React.FC = () => {
         valA = ((a.maxMcap - a.initialMcap) / (a.initialMcap || 1)) * 100;
         valB = ((b.maxMcap - b.initialMcap) / (b.initialMcap || 1)) * 100;
       } else {
-        valA = (a[sortBy] as number) ?? 0;
-        valB = (b[sortBy] as number) ?? 0;
+        valA = (a[sortBy] as number) || 0;
+        valB = (b[sortBy] as number) || 0;
       }
       return sortDirection === 'desc' ? valB - valA : valA - valB;
     });
   }, [activeGroup.tokens, sortBy, sortDirection]);
 
-  const copyShareLink = () => {
-    navigator.clipboard.writeText(window.location.href);
-    alert("Shareable link copied!");
-  };
-
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500 font-mono text-sm">
       <div className="flex flex-col items-center gap-4">
         <Database className="animate-pulse text-emerald-500" size={32} />
-        <p className="tracking-widest uppercase text-[10px]">Accessing Cloud Vault...</p>
+        <p className="tracking-widest uppercase text-[10px]">Syncing secure vault...</p>
       </div>
     </div>
   );
@@ -255,9 +257,17 @@ const App: React.FC = () => {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-white">Solana <span className="text-emerald-400">Watchlist</span></h1>
-              <div className="flex items-center gap-2">
-                 <p className="text-[10px] text-zinc-500 mono">Vault: {watchlistId}</p>
-                 <button onClick={copyShareLink} className="text-zinc-600 hover:text-emerald-400"><Share2 size={10} /></button>
+              <div className="flex items-center gap-2 mt-0.5">
+                 <p className="text-[10px] text-zinc-500 font-mono flex items-center gap-1.5">
+                    <span className="opacity-50 uppercase tracking-tighter">Vault:</span> 
+                    <span className="text-zinc-400">{watchlistId}</span>
+                 </p>
+                 <div className="w-px h-2 bg-zinc-800 mx-1"></div>
+                 <div className="flex items-center gap-1.5 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800">
+                    <Layers size={10} className="text-emerald-500" />
+                    <span className="text-[10px] text-zinc-300 font-bold font-mono">{totalTokens}<span className="text-zinc-600">/200</span></span>
+                 </div>
+                 <button onClick={() => {navigator.clipboard.writeText(window.location.href); alert('Link copied!')}} className="text-zinc-600 hover:text-emerald-400 p-1 transition-colors" title="Share Watchlist"><Share2 size={11} /></button>
               </div>
             </div>
           </div>
@@ -266,12 +276,12 @@ const App: React.FC = () => {
             <form onSubmit={addToken} className="relative w-full">
               <input
                 type="text"
-                placeholder={`Add token to ${activeGroup.name}...`}
+                placeholder={`Paste CA to monitor in ${activeGroup.name}...`}
                 value={newAddress}
                 onChange={(e) => setNewAddress(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:border-emerald-500 text-white placeholder-zinc-600"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:border-emerald-500 text-white placeholder-zinc-600 transition-all focus:bg-zinc-950"
               />
-              <button type="submit" disabled={isAdding} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-emerald-600 text-white rounded-lg">
+              <button type="submit" disabled={isAdding} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 disabled:opacity-50">
                 {isAdding ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
               </button>
             </form>
@@ -279,11 +289,11 @@ const App: React.FC = () => {
 
           <div className="flex items-center gap-3">
             <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-              <button onClick={() => setLayout('grid')} className={`p-2 rounded-md ${layout === 'grid' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500'}`}><LayoutGrid size={18} /></button>
-              <button onClick={() => setLayout('list')} className={`p-2 rounded-md ${layout === 'list' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500'}`}><List size={18} /></button>
+              <button onClick={() => setLayout('grid')} className={`p-2 rounded-md ${layout === 'grid' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-zinc-400'}`}><LayoutGrid size={18} /></button>
+              <button onClick={() => setLayout('list')} className={`p-2 rounded-md ${layout === 'list' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-zinc-400'}`}><List size={18} /></button>
             </div>
-            <button onClick={() => refreshAllTokens(true)} disabled={isRefreshing} className="p-3 bg-zinc-900 text-zinc-400 rounded-xl border border-zinc-800 hover:text-emerald-400 transition-colors">
-              <RefreshCw className={isRefreshing ? 'animate-spin' : ''} size={18} />
+            <button onClick={() => refreshAllTokens(true)} disabled={isRefreshing} className="p-3 bg-zinc-900 text-zinc-400 rounded-xl border border-zinc-800 hover:text-emerald-400 transition-colors group">
+              <RefreshCw className={isRefreshing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'} size={18} />
             </button>
           </div>
         </div>
@@ -292,7 +302,7 @@ const App: React.FC = () => {
       {dbError && (
         <div className="bg-rose-500/10 border-b border-rose-500/20 px-8 py-2 flex items-center justify-center gap-2 text-rose-400 text-[10px] font-bold uppercase tracking-widest">
            <ShieldAlert size={14} />
-           DB Status: {dbError} • Using Local Cache
+           DB Sync Status: {dbError}
         </div>
       )}
 
@@ -304,23 +314,32 @@ const App: React.FC = () => {
                 {editingGroupId === group.id ? (
                   <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                     <input autoFocus type="text" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveRename()} className="bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs text-white" />
-                    <Check size={14} className="text-emerald-500" onClick={saveRename} />
+                    <Check size={14} className="text-emerald-500 cursor-pointer" onClick={saveRename} />
                   </div>
                 ) : (
                   <>
-                    {group.name} <span className="text-[10px] opacity-60">({group.tokens?.length || 0})</span>
-                    <Edit2 size={12} className="opacity-0 group-hover/tab:opacity-100 transition-opacity ml-1" onClick={(e) => { e.stopPropagation(); startRenaming(group); }} />
-                    {groups.length > 1 && <Trash2 size={12} className="opacity-0 group-hover/tab:opacity-100 text-rose-500" onClick={(e) => { e.stopPropagation(); deleteGroup(group.id); }} />}
+                    {group.name} <span className="text-[10px] opacity-60 font-mono">[{group.tokens?.length || 0}]</span>
+                    <Edit2 size={12} className="opacity-0 group-hover/tab:opacity-100 transition-opacity ml-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); startRenaming(group); }} />
+                    {groups.length > 1 && <Trash2 size={12} className="opacity-0 group-hover/tab:opacity-100 text-rose-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); deleteGroup(group.id); }} />}
                   </>
                 )}
               </button>
             </div>
           ))}
-          <button onClick={createGroup} className="p-3 text-zinc-500 hover:text-emerald-400 transition-colors flex items-center gap-1 text-sm font-bold"><Plus size={16} /> New List</button>
+          <button onClick={createGroup} className="p-3 text-zinc-500 hover:text-emerald-400 transition-colors flex items-center gap-1 text-sm font-bold"><Plus size={16} /> New Group</button>
         </div>
 
         <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h2 className="text-xl font-bold text-zinc-100">{activeGroup.name}</h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold text-zinc-100">{activeGroup.name}</h2>
+            <button 
+              onClick={runAiAnalysis} 
+              disabled={isAnalyzing || !activeGroup.tokens?.length}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${isAnalyzing ? 'bg-zinc-800 text-zinc-600 animate-pulse' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 shadow-sm'}`}
+            >
+              <Sparkles size={14} /> {isAnalyzing ? 'Analyzing...' : 'AI Insights'}
+            </button>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {(['currentMcap', 'volume24h', 'maxMcap', 'athROI', 'addedAt'] as SortField[]).map(field => (
               <button key={field} onClick={() => { if (sortBy === field) setSortDirection(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy(field); setSortDirection('desc'); } }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${sortBy === field ? 'bg-emerald-600/10 border-emerald-500/50 text-emerald-400 shadow-[0_0_10px_-2px_rgba(16,185,129,0.3)]' : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'}`}>
@@ -331,11 +350,21 @@ const App: React.FC = () => {
           </div>
         </div>
 
+        {analysisResult && (
+          <div className="mb-8 glass rounded-2xl p-6 border-emerald-500/20 border-l-4 relative animate-in fade-in slide-in-from-top-4 duration-500 shadow-xl">
+            <button onClick={() => setAnalysisResult(null)} className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-400"><X size={16} /></button>
+            <div className="flex items-center gap-3 mb-4 text-emerald-400 font-bold uppercase tracking-widest text-xs">
+              <Sparkles size={16} /> AI Market Analysis
+            </div>
+            <p className="text-zinc-300 text-sm leading-relaxed font-medium">{analysisResult}</p>
+          </div>
+        )}
+
         {activeGroup.tokens?.length === 0 ? (
-          <div className="glass rounded-2xl p-20 text-center border-dashed border-2 border-zinc-800 text-zinc-500">
+          <div className="glass rounded-2xl p-20 text-center border-dashed border-2 border-zinc-800 text-zinc-500 bg-zinc-900/20">
              <TrendingUp size={48} className="mx-auto mb-4 opacity-10" />
-             <p className="text-sm font-medium">No tokens tracked in this group.</p>
-             <p className="text-xs opacity-50 mt-1">Paste a Solana contract address above to begin monitoring.</p>
+             <p className="text-sm font-medium">This group is currently empty.</p>
+             <p className="text-xs opacity-50 mt-1">Paste a contract address in the bar above to start tracking.</p>
           </div>
         ) : (
           <div className={layout === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6' : 'space-y-4'}>
@@ -347,12 +376,15 @@ const App: React.FC = () => {
       <footer className="fixed bottom-0 left-0 right-0 glass border-t border-zinc-800 p-3 z-50">
         <div className="max-w-7xl mx-auto flex justify-between items-center text-[10px] text-zinc-500 uppercase tracking-widest px-4 font-bold">
           <div className="flex gap-6 items-center">
-            <span className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.8)]"></div> SOL Mainnet</span>
+            <span className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.8)]"></div> Network: Solana</span>
+            <span className="hidden sm:flex items-center gap-2">
+              <Layers size={12} className="text-zinc-600" /> Total Tracked: {totalTokens}
+            </span>
             <span className={`flex items-center gap-2 ${dbError ? 'text-rose-400' : 'text-emerald-400/80'}`}>
-              <Database size={12} /> {dbError ? `Sync Issue: ${dbError}` : `Cloud Synced: ${new Date(lastSaved).toLocaleTimeString()}`}
+              <Database size={12} /> {dbError ? `Sync Issue` : `Cloud Synced: ${new Date(lastSaved).toLocaleTimeString()}`}
             </span>
           </div>
-          <p className="hidden md:block">Watchlist Suite • v2.8 Direct API</p>
+          <p className="hidden md:block">SOL Watchlist v3.1 • Professional Dashboard</p>
         </div>
       </footer>
     </div>
