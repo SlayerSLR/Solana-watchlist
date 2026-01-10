@@ -27,7 +27,7 @@
         .accent-glow {
             box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.2);
         }
-        /* Custom scrollbar for better aesthetics */
+        /* Custom scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #09090b; }
         ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
@@ -36,9 +36,9 @@
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
     "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
     "vite": "https://esm.sh/vite@^7.3.1",
@@ -50,7 +50,6 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- Crucial: Vite entry point -->
     <script type="module" src="/index.tsx"></script>
 </body>
 </html>

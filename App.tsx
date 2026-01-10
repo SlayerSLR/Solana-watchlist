@@ -1,9 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Cloud, CloudLightning, Share2, Database, ShieldAlert, Sparkles, Layers } from 'lucide-react';
+import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Share2, Database, ShieldAlert, Layers, Search } from 'lucide-react';
 import { WatchlistToken, LayoutMode, SortField, SortDirection, WatchlistGroup } from './types';
 import { fetchTokenData, fetchMultipleTokens } from './services/dexscreener';
-import { analyzeTokenSet } from './services/gemini';
 import TokenCard from './components/TokenCard';
 import TokenRow from './components/TokenRow';
 
@@ -30,9 +29,6 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<number>(Date.now());
-  
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
@@ -159,7 +155,7 @@ const App: React.FC = () => {
   }, [refreshAllTokens]);
 
   const createGroup = () => {
-    const newGroup: WatchlistGroup = { id: crypto.randomUUID(), name: `Group ${groups.length + 1}`, tokens: [] };
+    const newGroup: WatchlistGroup = { id: crypto.randomUUID(), name: `List ${groups.length + 1}`, tokens: [] };
     setGroups(prev => [...prev, newGroup]);
     setActiveGroupId(newGroup.id);
   };
@@ -180,19 +176,6 @@ const App: React.FC = () => {
     if (!editingGroupId || !editNameValue.trim()) return;
     setGroups(prev => prev.map(g => g.id === editingGroupId ? { ...g, name: editNameValue.trim() } : g));
     setEditingGroupId(null);
-  };
-
-  const runAiAnalysis = async () => {
-    if (!activeGroup.tokens?.length || isAnalyzing) return;
-    setIsAnalyzing(true);
-    try {
-      const result = await analyzeTokenSet(activeGroup.tokens);
-      setAnalysisResult(result || "No analysis generated.");
-    } catch (e) {
-      setAnalysisResult("AI module failed to respond.");
-    } finally {
-      setIsAnalyzing(false);
-    }
   };
 
   const addToken = async (e: React.FormEvent) => {
@@ -249,100 +232,99 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen pb-20">
-      <header className="sticky top-0 z-50 glass border-b border-zinc-800 px-4 py-4 md:px-8">
+      <header className="sticky top-0 z-50 glass border-b border-zinc-800 px-4 py-4 md:px-8 shadow-2xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-600 rounded-lg shadow-[0_0_15px_-3px_rgba(16,185,129,0.4)]">
+            <div className="p-2.5 bg-emerald-600 rounded-xl shadow-[0_0_20px_-5px_rgba(16,185,129,0.5)] active:scale-95 transition-transform cursor-pointer">
               <Zap className="text-white fill-current" size={24} />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-white">Solana <span className="text-emerald-400">Watchlist</span></h1>
-              <div className="flex items-center gap-2 mt-0.5">
-                 <p className="text-[10px] text-zinc-500 font-mono flex items-center gap-1.5">
-                    <span className="opacity-50 uppercase tracking-tighter">Vault:</span> 
-                    <span className="text-zinc-400">{watchlistId}</span>
-                 </p>
-                 <div className="w-px h-2 bg-zinc-800 mx-1"></div>
-                 <div className="flex items-center gap-1.5 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800">
-                    <Layers size={10} className="text-emerald-500" />
-                    <span className="text-[10px] text-zinc-300 font-bold font-mono">{totalTokens}<span className="text-zinc-600">/200</span></span>
+              <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
+                SOLANA <span className="text-emerald-400">WATCHLIST</span>
+              </h1>
+              <div className="flex items-center gap-2 mt-1">
+                 <div className="flex items-center gap-1.5 bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-tighter font-bold">Vault</span> 
+                    <span className="text-[10px] text-zinc-300 font-mono">{watchlistId}</span>
                  </div>
-                 <button onClick={() => {navigator.clipboard.writeText(window.location.href); alert('Link copied!')}} className="text-zinc-600 hover:text-emerald-400 p-1 transition-colors" title="Share Watchlist"><Share2 size={11} /></button>
+                 <button onClick={() => {navigator.clipboard.writeText(window.location.href); alert('Link copied!')}} className="text-zinc-500 hover:text-emerald-400 p-1 transition-colors ml-1" title="Share Watchlist"><Share2 size={11} /></button>
               </div>
             </div>
           </div>
 
           <div className="flex flex-1 max-w-xl">
-            <form onSubmit={addToken} className="relative w-full">
+            <form onSubmit={addToken} className="relative w-full group">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-emerald-500 transition-colors">
+                <Search size={16} />
+              </div>
               <input
                 type="text"
                 placeholder={`Paste CA to monitor in ${activeGroup.name}...`}
                 value={newAddress}
                 onChange={(e) => setNewAddress(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:border-emerald-500 text-white placeholder-zinc-600 transition-all focus:bg-zinc-950"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3.5 pl-11 pr-14 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/5 text-white placeholder-zinc-600 transition-all font-medium"
               />
-              <button type="submit" disabled={isAdding} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 disabled:opacity-50">
-                {isAdding ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
+              <button type="submit" disabled={isAdding} className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 disabled:opacity-50 shadow-lg shadow-emerald-600/20 transition-all active:scale-90 flex items-center justify-center">
+                {isAdding ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={20} />}
               </button>
             </form>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-              <button onClick={() => setLayout('grid')} className={`p-2 rounded-md ${layout === 'grid' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-zinc-400'}`}><LayoutGrid size={18} /></button>
-              <button onClick={() => setLayout('list')} className={`p-2 rounded-md ${layout === 'list' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-zinc-400'}`}><List size={18} /></button>
+            <div className="flex bg-zinc-900/80 rounded-xl p-1 border border-zinc-800">
+              <button onClick={() => setLayout('grid')} className={`p-2 rounded-lg transition-all ${layout === 'grid' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-zinc-400'}`}><LayoutGrid size={18} /></button>
+              <button onClick={() => setLayout('list')} className={`p-2 rounded-lg transition-all ${layout === 'list' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-zinc-400'}`}><List size={18} /></button>
             </div>
-            <button onClick={() => refreshAllTokens(true)} disabled={isRefreshing} className="p-3 bg-zinc-900 text-zinc-400 rounded-xl border border-zinc-800 hover:text-emerald-400 transition-colors group">
-              <RefreshCw className={isRefreshing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'} size={18} />
+            <button onClick={() => refreshAllTokens(true)} disabled={isRefreshing} className="p-3.5 bg-zinc-900/80 text-zinc-400 rounded-xl border border-zinc-800 hover:text-emerald-400 transition-all active:scale-90 group relative overflow-hidden">
+              <RefreshCw className={isRefreshing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-700'} size={18} />
             </button>
           </div>
         </div>
       </header>
 
       {dbError && (
-        <div className="bg-rose-500/10 border-b border-rose-500/20 px-8 py-2 flex items-center justify-center gap-2 text-rose-400 text-[10px] font-bold uppercase tracking-widest">
+        <div className="bg-rose-500/10 border-b border-rose-500/20 px-8 py-2.5 flex items-center justify-center gap-2 text-rose-400 text-[10px] font-black uppercase tracking-widest animate-pulse">
            <ShieldAlert size={14} />
-           DB Sync Status: {dbError}
+           DB CONNECTION STATUS: {dbError}
         </div>
       )}
 
       <main className="max-w-7xl mx-auto px-4 py-8 md:px-8">
-        <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-zinc-800 pb-2 overflow-x-auto no-scrollbar">
+        <div className="mb-8 flex flex-wrap items-center gap-2 border-b border-zinc-800/50 pb-1 overflow-x-auto no-scrollbar">
           {groups.map(group => (
             <div key={group.id} className="relative group/tab">
-              <button onClick={() => setActiveGroupId(group.id)} className={`px-4 py-3 text-sm font-bold rounded-t-lg transition-all whitespace-nowrap flex items-center gap-2 border-b-2 ${activeGroupId === group.id ? 'bg-emerald-600/5 border-emerald-500 text-emerald-400' : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300'}`}>
+              <button onClick={() => setActiveGroupId(group.id)} className={`px-5 py-4 text-xs font-black uppercase tracking-widest rounded-t-xl transition-all whitespace-nowrap flex items-center gap-3 border-b-2 ${activeGroupId === group.id ? 'bg-emerald-600/5 border-emerald-500 text-emerald-400' : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/30'}`}>
                 {editingGroupId === group.id ? (
-                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                    <input autoFocus type="text" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveRename()} className="bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs text-white" />
-                    <Check size={14} className="text-emerald-500 cursor-pointer" onClick={saveRename} />
+                  <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                    <input autoFocus type="text" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveRename()} className="bg-zinc-950 border border-zinc-700 rounded-lg px-2 py-1 text-[10px] text-white outline-none focus:border-emerald-500 w-32" />
+                    <Check size={14} className="text-emerald-500 cursor-pointer hover:scale-125 transition-transform" onClick={saveRename} />
                   </div>
                 ) : (
                   <>
-                    {group.name} <span className="text-[10px] opacity-60 font-mono">[{group.tokens?.length || 0}]</span>
-                    <Edit2 size={12} className="opacity-0 group-hover/tab:opacity-100 transition-opacity ml-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); startRenaming(group); }} />
-                    {groups.length > 1 && <Trash2 size={12} className="opacity-0 group-hover/tab:opacity-100 text-rose-500 cursor-pointer" onClick={(e) => { e.stopPropagation(); deleteGroup(group.id); }} />}
+                    {group.name} 
+                    <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${activeGroupId === group.id ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-zinc-900 text-zinc-600 border-zinc-800'}`}>
+                      {group.tokens?.length || 0}
+                    </span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover/tab:opacity-100 transition-opacity">
+                      <Edit2 size={12} className="cursor-pointer hover:text-emerald-400" onClick={(e) => { e.stopPropagation(); startRenaming(group); }} />
+                      {groups.length > 1 && <Trash2 size={12} className="text-rose-600 cursor-pointer hover:text-rose-400" onClick={(e) => { e.stopPropagation(); deleteGroup(group.id); }} />}
+                    </div>
                   </>
                 )}
               </button>
             </div>
           ))}
-          <button onClick={createGroup} className="p-3 text-zinc-500 hover:text-emerald-400 transition-colors flex items-center gap-1 text-sm font-bold"><Plus size={16} /> New Group</button>
+          <button onClick={createGroup} className="px-5 py-4 text-zinc-600 hover:text-emerald-400 transition-all flex items-center gap-1.5 text-xs font-black uppercase tracking-widest"><Plus size={16} /> NEW LIST</button>
         </div>
 
-        <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-            <h2 className="text-xl font-bold text-zinc-100">{activeGroup.name}</h2>
-            <button 
-              onClick={runAiAnalysis} 
-              disabled={isAnalyzing || !activeGroup.tokens?.length}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${isAnalyzing ? 'bg-zinc-800 text-zinc-600 animate-pulse' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 shadow-sm'}`}
-            >
-              <Sparkles size={14} /> {isAnalyzing ? 'Analyzing...' : 'AI Insights'}
-            </button>
+            <h2 className="text-2xl font-black text-white tracking-tight">{activeGroup.name}</h2>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 bg-zinc-900/50 p-1.5 rounded-2xl border border-zinc-800/80 shadow-inner">
+            <span className="text-[9px] text-zinc-600 font-black uppercase tracking-[0.2em] pl-3 pr-2">Order By</span>
             {(['currentMcap', 'volume24h', 'maxMcap', 'athROI', 'addedAt'] as SortField[]).map(field => (
-              <button key={field} onClick={() => { if (sortBy === field) setSortDirection(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy(field); setSortDirection('desc'); } }} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${sortBy === field ? 'bg-emerald-600/10 border-emerald-500/50 text-emerald-400 shadow-[0_0_10px_-2px_rgba(16,185,129,0.3)]' : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'}`}>
+              <button key={field} onClick={() => { if (sortBy === field) setSortDirection(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy(field); setSortDirection('desc'); } }} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${sortBy === field ? 'bg-zinc-800 text-emerald-400 shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
                 {field === 'currentMcap' ? 'MC' : field === 'volume24h' ? 'Vol' : field === 'maxMcap' ? 'ATH' : field === 'athROI' ? 'ROI' : 'Date'}
                 {sortBy === field && (sortDirection === 'desc' ? ' ↓' : ' ↑')}
               </button>
@@ -350,41 +332,36 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {analysisResult && (
-          <div className="mb-8 glass rounded-2xl p-6 border-emerald-500/20 border-l-4 relative animate-in fade-in slide-in-from-top-4 duration-500 shadow-xl">
-            <button onClick={() => setAnalysisResult(null)} className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-400"><X size={16} /></button>
-            <div className="flex items-center gap-3 mb-4 text-emerald-400 font-bold uppercase tracking-widest text-xs">
-              <Sparkles size={16} /> AI Market Analysis
-            </div>
-            <p className="text-zinc-300 text-sm leading-relaxed font-medium">{analysisResult}</p>
-          </div>
-        )}
-
         {activeGroup.tokens?.length === 0 ? (
-          <div className="glass rounded-2xl p-20 text-center border-dashed border-2 border-zinc-800 text-zinc-500 bg-zinc-900/20">
-             <TrendingUp size={48} className="mx-auto mb-4 opacity-10" />
-             <p className="text-sm font-medium">This group is currently empty.</p>
-             <p className="text-xs opacity-50 mt-1">Paste a contract address in the bar above to start tracking.</p>
+          <div className="glass rounded-[2.5rem] p-24 text-center border-dashed border-2 border-zinc-800/50 bg-zinc-900/5 relative overflow-hidden">
+             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-emerald-500/5 opacity-50"></div>
+             <div className="relative z-10">
+                <div className="w-20 h-20 bg-zinc-950/80 rounded-[1.5rem] flex items-center justify-center mx-auto mb-8 border border-zinc-800 shadow-2xl">
+                    <TrendingUp size={36} className="text-zinc-700 animate-pulse" />
+                </div>
+                <h3 className="text-lg font-black text-zinc-400 uppercase tracking-[0.2em] mb-3">Your list is empty</h3>
+                <p className="text-sm text-zinc-600 font-medium max-w-sm mx-auto leading-relaxed">Paste a contract address in the search bar above to begin tracking professional Solana on-chain data.</p>
+             </div>
           </div>
         ) : (
-          <div className={layout === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6' : 'space-y-4'}>
+          <div className={layout === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8' : 'space-y-4'}>
             {sortedTokens.map((token) => layout === 'grid' ? <TokenCard key={token.id} token={token} onRemove={(tid) => setGroups(prev => prev.map(g => g.id === activeGroupId ? { ...g, tokens: (g.tokens || []).filter(t => t.id !== tid) } : g))} /> : <TokenRow key={token.id} token={token} onRemove={(tid) => setGroups(prev => prev.map(g => g.id === activeGroupId ? { ...g, tokens: (g.tokens || []).filter(t => t.id !== tid) } : g))} />)}
           </div>
         )}
       </main>
 
-      <footer className="fixed bottom-0 left-0 right-0 glass border-t border-zinc-800 p-3 z-50">
-        <div className="max-w-7xl mx-auto flex justify-between items-center text-[10px] text-zinc-500 uppercase tracking-widest px-4 font-bold">
-          <div className="flex gap-6 items-center">
-            <span className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.8)]"></div> Network: Solana</span>
-            <span className="hidden sm:flex items-center gap-2">
-              <Layers size={12} className="text-zinc-600" /> Total Tracked: {totalTokens}
+      <footer className="fixed bottom-0 left-0 right-0 glass border-t border-zinc-800/80 p-4 z-50 shadow-2xl">
+        <div className="max-w-7xl mx-auto flex justify-between items-center text-[10px] text-zinc-500 uppercase tracking-[0.2em] px-4 font-black">
+          <div className="flex gap-8 items-center">
+            <span className="flex items-center gap-2.5 bg-zinc-950/50 px-3 py-1.5 rounded-full border border-zinc-800"><div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></div> Solana Mainnet</span>
+            <span className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-zinc-800 bg-zinc-950/50">
+              <Layers size={14} className="text-zinc-600" /> TOTAL TRACKED: {totalTokens}
             </span>
-            <span className={`flex items-center gap-2 ${dbError ? 'text-rose-400' : 'text-emerald-400/80'}`}>
-              <Database size={12} /> {dbError ? `Sync Issue` : `Cloud Synced: ${new Date(lastSaved).toLocaleTimeString()}`}
+            <span className={`flex items-center gap-2.5 px-3 py-1.5 rounded-full border bg-zinc-950/50 ${dbError ? 'text-rose-500 border-rose-500/20' : 'text-emerald-500/80 border-emerald-500/10'}`}>
+              <Database size={14} /> {dbError ? `SYNC DISCONNECTED` : `VAULT SYNCED: ${new Date(lastSaved).toLocaleTimeString()}`}
             </span>
           </div>
-          <p className="hidden md:block">SOL Watchlist v3.1 • Professional Dashboard</p>
+          <p className="hidden md:block opacity-30 font-mono tracking-tighter">SW-PRO v3.2.0 • BUILT FOR DEGENS</p>
         </div>
       </footer>
     </div>
