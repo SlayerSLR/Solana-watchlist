@@ -15,8 +15,9 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
     return `$${val.toFixed(2)}`;
   };
 
-  const gain = ((token.currentMcap - token.initialMcap) / token.initialMcap) * 100;
-  const isPositive = gain >= 0;
+  const currentGain = ((token.currentMcap - token.initialMcap) / (token.initialMcap || 1)) * 100;
+  const athROI = ((token.maxMcap - token.initialMcap) / (token.initialMcap || 1)) * 100;
+  const isPositive = currentGain >= 0;
 
   return (
     <div className="glass flex flex-wrap items-center gap-4 p-3 hover:border-emerald-500/30 transition-all duration-300 group border border-zinc-800">
@@ -34,27 +35,37 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="flex-1 grid grid-cols-2 md:grid-cols-7 gap-4">
         <div>
           <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Current MC</p>
           <p className="text-xs font-semibold text-zinc-200 font-mono">{formatCurrency(token.currentMcap)}</p>
         </div>
         <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Max MC</p>
+          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">ATH</p>
           <p className="text-xs font-semibold text-emerald-500 font-mono">{formatCurrency(token.maxMcap)}</p>
         </div>
         <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Entry MC</p>
-          <p className="text-xs font-semibold text-zinc-400 font-mono">{formatCurrency(token.initialMcap)}</p>
+          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">ROI</p>
+          <p className="text-xs font-semibold text-emerald-400 font-mono">+{athROI.toFixed(1)}%</p>
+        </div>
+        <div>
+          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Drawdown</p>
+          <p className="text-xs font-semibold text-rose-500 font-mono">
+            {token.maxDrawdown ? token.maxDrawdown.toFixed(1) : '0.0'}%
+          </p>
         </div>
         <div>
           <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">24h Vol</p>
           <p className="text-xs font-semibold text-zinc-200 font-mono">{formatCurrency(token.volume24h)}</p>
         </div>
+        <div>
+          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Entry MC</p>
+          <p className="text-xs font-semibold text-zinc-400 font-mono">{formatCurrency(token.initialMcap)}</p>
+        </div>
         <div className="flex flex-col justify-center">
           <div className={`text-[11px] font-bold font-mono flex items-center gap-1 ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
             {isPositive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-            {isPositive ? '+' : ''}{gain.toFixed(1)}%
+            {isPositive ? '+' : ''}{currentGain.toFixed(1)}%
           </div>
         </div>
       </div>
@@ -70,10 +81,10 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
           <ExternalLink size={14} />
         </a>
         <a 
-          href={`https://axiom.trade/token/${token.address}`} 
+          href={`https://axiom.trade/meme/${token.pairAddress}?chain=sol`} 
           target="_blank" 
           rel="noopener noreferrer"
-          className="p-2 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-500 rounded-lg transition-colors border border-emerald-500/20"
+          className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-lg transition-colors border border-zinc-700"
           title="Axiom Trade"
         >
           <BarChart3 size={14} />

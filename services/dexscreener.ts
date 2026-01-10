@@ -17,6 +17,7 @@ export const fetchTokenData = async (address: string): Promise<Partial<TokenData
 
     return {
       address: bestPair.baseToken.address,
+      pairAddress: bestPair.pairAddress,
       symbol: bestPair.baseToken.symbol,
       name: bestPair.baseToken.name,
       currentMcap: bestPair.fdv || bestPair.marketCap || 0,
@@ -56,6 +57,7 @@ export const fetchMultipleTokens = async (addresses: string[]): Promise<Map<stri
             if (!results.has(address) || (results.get(address)?.fdv || 0) < (pair.fdv || 0)) {
                results.set(address, {
                 address: pair.baseToken.address,
+                pairAddress: pair.pairAddress,
                 symbol: pair.baseToken.symbol,
                 name: pair.baseToken.name,
                 currentMcap: pair.fdv || pair.marketCap || 0,

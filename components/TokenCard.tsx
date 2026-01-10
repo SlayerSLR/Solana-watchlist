@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { WatchlistToken } from '../types';
-import { ExternalLink, BarChart3, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
+import { ExternalLink, BarChart3, Trash2, TrendingUp, TrendingDown, ArrowDownCircle, Target } from 'lucide-react';
 
 interface Props {
   token: WatchlistToken;
@@ -15,11 +15,13 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
     return `$${val.toFixed(2)}`;
   };
 
-  const gain = ((token.currentMcap - token.initialMcap) / token.initialMcap) * 100;
-  const isPositive = gain >= 0;
+  const currentGain = ((token.currentMcap - token.initialMcap) / (token.initialMcap || 1)) * 100;
+  const athGain = ((token.maxMcap - token.initialMcap) / (token.initialMcap || 1)) * 100;
+  const isPositive = currentGain >= 0;
 
   return (
     <div className="glass rounded-xl p-5 hover:border-emerald-500/30 transition-all duration-300 group border border-zinc-800 accent-glow">
+      {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden border border-zinc-700 shadow-inner">
@@ -37,7 +39,7 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
         <div className="flex items-center gap-2">
           <div className={`text-[11px] font-bold font-mono px-2 py-0.5 rounded flex items-center gap-1 ${isPositive ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10'}`}>
             {isPositive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-            {isPositive ? '+' : ''}{gain.toFixed(1)}%
+            {isPositive ? '+' : ''}{currentGain.toFixed(1)}%
           </div>
           <button 
             onClick={() => onRemove(token.id)}
@@ -48,25 +50,39 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      {/* Main Stats Grid */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
           <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">Current MC</p>
           <p className="text-sm font-semibold text-zinc-100 font-mono">{formatCurrency(token.currentMcap)}</p>
         </div>
         <div>
-          <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">24h Vol</p>
-          <p className="text-sm font-semibold text-zinc-100 font-mono">{formatCurrency(token.volume24h)}</p>
+          <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">ATH</p>
+          <p className="text-sm font-semibold text-emerald-500 font-mono">{formatCurrency(token.maxMcap)}</p>
         </div>
         <div>
           <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">Entry MC</p>
           <p className="text-sm font-semibold text-zinc-400 font-mono">{formatCurrency(token.initialMcap)}</p>
         </div>
         <div>
-          <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">Max MC</p>
-          <p className="text-sm font-semibold text-emerald-500 font-mono">{formatCurrency(token.maxMcap)}</p>
+          <p className="text-[9px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">24h Vol</p>
+          <p className="text-sm font-semibold text-zinc-100 font-mono">{formatCurrency(token.volume24h)}</p>
         </div>
       </div>
 
+      {/* Performance Summary Row (ATH Gain & Drawdown side-by-side) */}
+      <div className="flex gap-2 mb-4">
+        <div className="flex-1 flex items-center justify-between p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
+          <Target size={12} className="text-emerald-500/60" />
+          <span className="text-[11px] font-mono font-bold text-emerald-400">+{athGain.toFixed(1)}%</span>
+        </div>
+        <div className="flex-1 flex items-center justify-between p-2 rounded-lg bg-rose-500/5 border border-rose-500/10">
+          <ArrowDownCircle size={12} className="text-rose-500/60" />
+          <span className="text-[11px] font-mono font-bold text-rose-400">{token.maxDrawdown ? token.maxDrawdown.toFixed(1) : '0.0'}%</span>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
       <div className="flex gap-2">
         <a 
           href={token.dexUrl} 
@@ -77,10 +93,10 @@ const TokenCard: React.FC<Props> = ({ token, onRemove }) => {
           <ExternalLink size={12} /> DexS
         </a>
         <a 
-          href={`https://axiom.trade/token/${token.address}`} 
+          href={`https://axiom.trade/meme/${token.pairAddress}?chain=sol`} 
           target="_blank" 
           rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 rounded-lg transition-colors border border-emerald-500/30"
+          className="flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors border border-zinc-700"
         >
           <BarChart3 size={12} /> Axiom
         </a>

@@ -1,11 +1,13 @@
 
 export interface TokenData {
   address: string;
+  pairAddress: string;
   symbol: string;
   name: string;
   initialMcap: number;
   maxMcap: number;
   currentMcap: number;
+  maxDrawdown: number; // Largest % drop from peak since scan
   volume24h: number;
   volume1h: number;
   priceNative: string;
@@ -29,7 +31,7 @@ export interface WatchlistGroup {
 
 export type LayoutMode = 'grid' | 'list';
 
-export type SortField = 'currentMcap' | 'volume24h' | 'maxMcap' | 'addedAt';
+export type SortField = 'currentMcap' | 'volume24h' | 'maxMcap' | 'athROI' | 'addedAt';
 export type SortDirection = 'asc' | 'desc';
 
 export interface VolumeLeader {
