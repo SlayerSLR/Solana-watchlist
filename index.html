@@ -14,9 +14,10 @@
         }
         .mono { font-family: 'JetBrains+Mono', monospace; }
         .glass {
-            background: rgba(24, 24, 27, 0.7); /* Zinc 900 */
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(15, 15, 18, 0.5); 
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
         .gradient-text {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -31,6 +32,14 @@
         ::-webkit-scrollbar-track { background: #09090b; }
         ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+        
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
     </style>
 <script type="importmap">
 {

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { WatchlistToken } from '../types';
 import { ExternalLink, Trash2, BarChart3, TrendingUp, TrendingDown, Copy, Check } from 'lucide-react';
@@ -28,8 +27,8 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
   const isPositive = currentGain >= 0;
 
   return (
-    <div className="glass flex flex-wrap items-center gap-4 p-3 hover:border-emerald-500/30 transition-all duration-300 group border border-zinc-800">
-      <div className="flex items-center gap-3 w-48">
+    <div className="glass flex flex-wrap items-center gap-4 p-2.5 hover:border-emerald-500/30 transition-all duration-300 group border border-zinc-800 cursor-grab active:cursor-grabbing">
+      <div className="flex items-center gap-3 w-40 min-w-0 flex-shrink-0">
         <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden flex-shrink-0 border border-zinc-700">
           {token.imageUrl ? (
             <img src={token.imageUrl} alt={token.symbol} className="w-full h-full object-cover" />
@@ -37,12 +36,12 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
             <span className="text-[10px] font-bold text-zinc-600">{token.symbol[0]}</span>
           )}
         </div>
-        <div className="min-w-0">
-          <h3 className="font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate text-sm">{token.symbol}</h3>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate text-xs">{token.symbol}</h3>
           <div className="flex items-center gap-1">
-            <p className="text-[10px] text-zinc-600 mono truncate">{token.address.slice(0, 4)}...{token.address.slice(-4)}</p>
+            <p className="text-[9px] text-zinc-600 mono truncate">{token.address.slice(0, 4)}...{token.address.slice(-4)}</p>
             <button 
-              onClick={handleCopy}
+              onClick={(e) => { e.stopPropagation(); handleCopy(); }}
               className={`transition-colors p-0.5 rounded ${copied ? 'text-emerald-400' : 'text-zinc-700 hover:text-zinc-400'}`}
               title="Copy CA"
             >
@@ -52,47 +51,47 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-2 md:grid-cols-7 gap-4">
-        <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Current Mcap</p>
-          <p className="text-xs font-semibold text-zinc-200 font-mono">{formatCurrency(token.currentMcap)}</p>
+      <div className="flex-1 grid grid-cols-2 md:grid-cols-6 gap-3 min-w-0">
+        <div className="min-w-0">
+          <p className="text-[8px] uppercase text-zinc-600 font-black tracking-tight">Current Mcap</p>
+          <div className="flex items-center gap-1">
+            <p className="text-[11px] font-bold text-zinc-200 font-mono truncate">{formatCurrency(token.currentMcap)}</p>
+            <div className={`text-[10px] font-bold font-mono ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {isPositive ? '+' : ''}{currentGain.toFixed(1)}%
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">ATH</p>
-          <p className="text-xs font-semibold text-emerald-500 font-mono">{formatCurrency(token.maxMcap)}</p>
+        <div className="min-w-0">
+          <p className="text-[8px] uppercase text-zinc-600 font-black tracking-tight">ATH</p>
+          <p className="text-[11px] font-bold text-emerald-500 font-mono truncate">{formatCurrency(token.maxMcap)}</p>
         </div>
-        <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">ROI</p>
-          <p className="text-xs font-semibold text-emerald-400 font-mono">+{athROI.toFixed(1)}%</p>
+        <div className="min-w-0">
+          <p className="text-[8px] uppercase text-zinc-600 font-black tracking-tight">ATH ROI</p>
+          <p className="text-[11px] font-bold text-emerald-400 font-mono truncate">+{athROI.toFixed(1)}%</p>
         </div>
-        <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Drawdown</p>
-          <p className="text-xs font-semibold text-rose-500 font-mono">
+        <div className="min-w-0">
+          <p className="text-[8px] uppercase text-zinc-600 font-black tracking-tight">DD</p>
+          <p className="text-[11px] font-bold text-rose-500 font-mono truncate">
             {token.maxDrawdown ? token.maxDrawdown.toFixed(1) : '0.0'}%
           </p>
         </div>
-        <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">24h Vol</p>
-          <p className="text-xs font-semibold text-zinc-200 font-mono">{formatCurrency(token.volume24h)}</p>
+        <div className="min-w-0">
+          <p className="text-[8px] uppercase text-zinc-600 font-black tracking-tight">24h Vol</p>
+          <p className="text-[11px] font-bold text-zinc-200 font-mono truncate">{formatCurrency(token.volume24h)}</p>
         </div>
-        <div>
-          <p className="text-[9px] uppercase text-zinc-600 font-bold tracking-tight">Initial Scan</p>
-          <p className="text-xs font-semibold text-zinc-400 font-mono">{formatCurrency(token.initialMcap)}</p>
-        </div>
-        <div className="flex flex-col justify-center">
-          <div className={`text-[11px] font-bold font-mono flex items-center gap-1 ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {isPositive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-            {isPositive ? '+' : ''}{currentGain.toFixed(1)}%
-          </div>
+        <div className="min-w-0">
+          <p className="text-[8px] uppercase text-zinc-600 font-black tracking-tight">Initial</p>
+          <p className="text-[11px] font-bold text-zinc-400 font-mono truncate">{formatCurrency(token.initialMcap)}</p>
         </div>
       </div>
 
-      <div className="flex gap-2 ml-auto">
+      <div className="flex gap-2 ml-auto flex-shrink-0">
         <a 
           href={token.dexUrl} 
           target="_blank" 
           rel="noopener noreferrer"
-          className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-lg transition-colors border border-zinc-700"
+          onClick={(e) => e.stopPropagation()}
+          className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded transition-colors border border-zinc-700"
           title="DexScreener"
         >
           <ExternalLink size={14} />
@@ -101,14 +100,15 @@ const TokenRow: React.FC<Props> = ({ token, onRemove }) => {
           href={`https://axiom.trade/meme/${token.pairAddress}?chain=sol`} 
           target="_blank" 
           rel="noopener noreferrer"
-          className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-lg transition-colors border border-zinc-700"
+          onClick={(e) => e.stopPropagation()}
+          className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded transition-colors border border-zinc-700"
           title="Axiom Trade"
         >
           <BarChart3 size={14} />
         </a>
         <button 
-          onClick={() => onRemove(token.id)}
-          className="p-2 text-zinc-700 hover:text-rose-400 transition-colors"
+          onClick={(e) => { e.stopPropagation(); onRemove(token.id); }}
+          className="p-1.5 text-zinc-700 hover:text-rose-400 transition-colors"
           title="Remove"
         >
           <Trash2 size={14} />
