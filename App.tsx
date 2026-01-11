@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Share2, Database, ShieldAlert, Layers, Search, CloudOff, Globe, Cloud, Filter } from 'lucide-react';
+import { LayoutGrid, List, Plus, RefreshCw, Zap, TrendingUp, BarChart, AlertCircle, Edit2, Check, X, Trash2, Share2, Database, ShieldAlert, Layers, Search, CloudOff, Globe, Cloud, Filter, WifiOff, AlertTriangle, ShieldCheck, DatabaseZap } from 'lucide-react';
 import { WatchlistToken, LayoutMode, SortField, SortDirection, WatchlistGroup } from './types';
 import { fetchTokenData, fetchMultipleTokens } from './services/dexscreener';
 import TokenCard from './components/TokenCard';
@@ -31,8 +31,9 @@ const App: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isCloudEnabled, setIsCloudEnabled] = useState(false);
-  const [dbError, setDbError] = useState<string | null>(null);
+  const [dbError, setDbError] = useState<{ type: 'auth' | 'network' | 'sync' | 'generic', message: string } | null>(null);
   const [lastSaved, setLastSaved] = useState<number>(Date.now());
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
@@ -43,6 +44,20 @@ const App: React.FC = () => {
   const dragOverItem = useRef<number | null>(null);
 
   useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setDbError(null);
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     window.location.hash = watchlistId;
     localStorage.setItem('solana-watchlist-id', watchlistId);
   }, [watchlistId]);
@@ -50,6 +65,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
+      setDbError(null);
       try {
         const res = await fetch(`/api/watchlist?id=${watchlistId}`);
         const contentType = res.headers.get("content-type");
@@ -65,15 +81,22 @@ const App: React.FC = () => {
             }
           } else if (result?.error?.includes('keys missing')) {
             setIsCloudEnabled(false);
+            setDbError({ type: 'auth', message: 'Cloud sync keys missing in environment. Running in Local Mode.' });
           } else {
-            setDbError(result?.error || "Sync Error");
+            setDbError({ type: 'sync', message: result?.error || 'Failed to establish cloud session. Check database connection.' });
           }
         } else {
           setIsCloudEnabled(false);
+          if (!res.ok) setDbError({ type: 'network', message: `Cloud database responded with status ${res.status}.` });
         }
       } catch (e: any) {
         console.error("Cloud Connection Failed:", e.message);
         setIsCloudEnabled(false);
+        if (!navigator.onLine) {
+          setDbError({ type: 'network', message: "Network connection lost. App is running in Local Storage mode." });
+        } else {
+          setDbError({ type: 'generic', message: "Unable to reach the cloud server. Data is stored locally." });
+        }
       } finally {
         setIsLoading(false);
       }
@@ -87,7 +110,7 @@ const App: React.FC = () => {
     localStorage.setItem(`local-watchlist-data-${watchlistId}`, JSON.stringify(groups));
     setLastSaved(Date.now());
 
-    if (!isCloudEnabled) return;
+    if (!isCloudEnabled || !isOnline) return;
 
     const timer = setTimeout(async () => {
       try {
@@ -102,13 +125,15 @@ const App: React.FC = () => {
           const result = await res.json();
           if (result && result.error) throw new Error(result.error);
           setDbError(null);
+        } else {
+          setDbError({ type: 'sync', message: `Cloud update failed (${res.status}). Will retry automatically.` });
         }
       } catch (e) {
-        setDbError("Sync paused");
+        setDbError({ type: 'sync', message: "Cloud sync interrupted. Progress is safe in your local browser storage." });
       }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [groups, watchlistId, isLoading, isCloudEnabled]);
+  }, [groups, watchlistId, isLoading, isCloudEnabled, isOnline]);
 
   const activeGroup = useMemo(() => 
     groups.find(g => g.id === activeGroupId) || groups[0] || { id: 'default', name: 'Main', tokens: [] }, 
@@ -119,7 +144,7 @@ const App: React.FC = () => {
   [groups]);
 
   const refreshAllTokens = useCallback(async (isManual = false) => {
-    if (totalTokens === 0 || isRefreshingRef.current) return;
+    if (totalTokens === 0 || isRefreshingRef.current || !isOnline) return;
     if (isManual) setIsRefreshing(true);
     isRefreshingRef.current = true;
     try {
@@ -148,7 +173,7 @@ const App: React.FC = () => {
       if (isManual) setIsRefreshing(false);
       isRefreshingRef.current = false;
     }
-  }, [groups, totalTokens]);
+  }, [groups, totalTokens, isOnline]);
 
   useEffect(() => {
     const interval = setInterval(() => refreshAllTokens(false), 20000);
@@ -196,7 +221,7 @@ const App: React.FC = () => {
 
   const addToken = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAddress.trim() || totalTokens >= 200) return;
+    if (!newAddress.trim() || totalTokens >= 200 || !isOnline) return;
     const cleanAddress = newAddress.trim();
     if (activeGroup.tokens?.some(t => t.address === cleanAddress)) return;
 
@@ -253,15 +278,17 @@ const App: React.FC = () => {
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500 font-mono text-sm">
       <div className="flex flex-col items-center gap-4">
-        <Database className="animate-pulse text-emerald-500" size={32} />
-        <p className="tracking-widest uppercase text-[10px]">Accessing Vault...</p>
+        <DatabaseZap className="animate-pulse text-emerald-500" size={40} />
+        <div className="flex flex-col items-center">
+            <p className="tracking-widest uppercase text-[10px] font-black text-zinc-400">Initializing Vault</p>
+            <p className="text-[8px] text-zinc-600 mt-1 uppercase tracking-tighter">Handshaking with Solana Analytics Layer...</p>
+        </div>
       </div>
     </div>
   );
 
   return (
     <div className="min-h-screen pb-20">
-      {/* Reverted Header to taller spacious design with glass look - Increased max-width */}
       <header className="sticky top-0 z-50 glass px-4 h-20 md:px-8 shadow-2xl flex items-center">
         <div className="max-w-[1800px] mx-auto w-full flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -286,12 +313,13 @@ const App: React.FC = () => {
             <form onSubmit={addToken} className="relative w-full group">
               <input
                 type="text"
-                placeholder={`Paste CA to monitor in main watchlist...`}
+                placeholder={isOnline ? `Paste CA to monitor in main watchlist...` : "Network Offline - Cannot add tokens"}
+                disabled={!isOnline}
                 value={newAddress}
                 onChange={(e) => setNewAddress(e.target.value)}
-                className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 pl-5 pr-12 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/5 text-white placeholder-zinc-500 transition-all font-medium"
+                className={`w-full bg-black/20 border border-white/10 rounded-xl py-2.5 pl-5 pr-12 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/5 text-white placeholder-zinc-500 transition-all font-medium ${!isOnline ? 'opacity-50 cursor-not-allowed border-rose-500/20' : ''}`}
               />
-              <button type="submit" disabled={isAdding} className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 disabled:opacity-50 transition-all active:scale-90 flex items-center justify-center shadow-lg shadow-emerald-600/20">
+              <button type="submit" disabled={isAdding || !isOnline} className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 disabled:opacity-50 transition-all active:scale-90 flex items-center justify-center shadow-lg shadow-emerald-600/20">
                 {isAdding ? <RefreshCw className="animate-spin" size={16} /> : <Plus size={20} />}
               </button>
             </form>
@@ -302,15 +330,57 @@ const App: React.FC = () => {
               <button onClick={() => setLayout('grid')} className={`p-1.5 rounded-lg transition-all ${layout === 'grid' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-zinc-400'}`}><LayoutGrid size={18} /></button>
               <button onClick={() => setLayout('list')} className={`p-1.5 rounded-lg transition-all ${layout === 'list' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-zinc-400'}`}><List size={18} /></button>
             </div>
-            <button onClick={() => refreshAllTokens(true)} disabled={isRefreshing} className="p-2 bg-zinc-900/60 text-zinc-400 rounded-xl border border-white/5 hover:text-emerald-400 transition-all active:scale-90 flex-shrink-0">
+            <button onClick={() => refreshAllTokens(true)} disabled={isRefreshing || !isOnline} className="p-2 bg-zinc-900/60 text-zinc-400 rounded-xl border border-white/5 hover:text-emerald-400 transition-all active:scale-90 flex-shrink-0 disabled:opacity-50">
               <RefreshCw className={isRefreshing ? 'animate-spin' : ''} size={18} />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content - Increased max-width */}
       <main className="max-w-[1800px] mx-auto px-4 py-8 md:px-8">
+        {/* Enhanced Informative Error Banner */}
+        {(dbError || !isOnline) && (
+          <div className={`mb-6 p-4 rounded-2xl border flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300 shadow-xl ${
+            !isOnline ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 
+            dbError?.type === 'auth' ? 'bg-zinc-800/80 border-zinc-700 text-zinc-400' :
+            dbError?.type === 'network' ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' :
+            'bg-indigo-500/10 border-indigo-500/20 text-indigo-500'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-current bg-opacity-10">
+                {!isOnline ? <WifiOff size={22} /> : 
+                 dbError?.type === 'auth' ? <ShieldAlert size={22} /> : 
+                 dbError?.type === 'network' ? <Globe size={22} /> :
+                 <AlertTriangle size={22} />}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                    {!isOnline ? "Network Connection Disconnected" : 
+                     dbError?.type === 'auth' ? "Cloud Credentials Unavailable" :
+                     dbError?.type === 'network' ? "Network Latency / Connection Error" : 
+                     "Database Synchronization Issue"}
+                    {!isOnline && <span className="text-[8px] bg-amber-500 text-black px-1 rounded ml-1">OFFLINE</span>}
+                </p>
+                <p className="text-[11px] opacity-90 font-medium leading-tight mt-0.5">
+                    {!isOnline ? "You are currently disconnected. You can still view and modify lists; they will be saved to your browser and sync when back online." : dbError?.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+                {!isOnline && (
+                    <button onClick={() => window.location.reload()} className="px-3 py-1.5 rounded-lg bg-amber-500 text-black text-[10px] font-black uppercase hover:bg-amber-400 transition-colors">
+                        Re-Connect
+                    </button>
+                )}
+                {dbError && (
+                    <button onClick={() => setDbError(null)} className="p-1.5 hover:bg-black/10 rounded-lg transition-colors">
+                        <X size={18} />
+                    </button>
+                )}
+            </div>
+          </div>
+        )}
+
         <div className="mb-6 flex flex-wrap items-center gap-3 border-b border-zinc-800/50 pb-1 overflow-x-auto no-scrollbar">
           {groups.map(group => (
             <div key={group.id} className="relative group/tab">
@@ -405,20 +475,31 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Reverted Footer to taller spacious design with glass look - Increased max-width */}
       <footer className="fixed bottom-0 left-0 right-0 glass py-2 px-4 z-50 shadow-2xl border-t border-white/5">
         <div className="max-w-[1800px] mx-auto flex flex-col sm:flex-row justify-between items-center text-[9px] text-zinc-500 uppercase tracking-[0.2em] px-4 font-black gap-2">
           <div className="flex flex-wrap gap-6 items-center justify-center">
-            <span className="flex items-center gap-2.5 bg-black/20 px-3 py-1 rounded-full border border-white/5"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div> Solana Mainnet</span>
+            <span className={`flex items-center gap-2.5 bg-black/20 px-3 py-1 rounded-full border border-white/5 transition-colors ${isOnline ? 'text-zinc-500' : 'text-amber-500 bg-amber-500/5 border-amber-500/30'}`}>
+              <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></div> 
+              {isOnline ? 'Solana Live' : 'Network Offline'}
+            </span>
             <span className="flex items-center gap-2 px-3 py-1 rounded-full border border-white/5 bg-black/20">
               <Layers size={14} className="text-zinc-600" /> TRACKED: {totalTokens}
             </span>
-            <span className={`flex items-center gap-2 px-3 py-1 rounded-full border bg-black/20 border-white/5 ${!isCloudEnabled ? 'text-zinc-500' : dbError ? 'text-rose-500' : 'text-emerald-500/80'}`}>
-              {!isCloudEnabled ? <CloudOff size={14} /> : <Cloud size={14} className="text-emerald-500" />} 
-              {!isCloudEnabled ? 'LOCAL MODE' : dbError ? `SYNC LOST` : `CLOUD SYNCED`}
+            <span className={`flex items-center gap-2 px-3 py-1 rounded-full border bg-black/20 border-white/5 transition-all duration-500 ${
+                !isCloudEnabled ? 'text-zinc-400 border-zinc-700/50' : 
+                dbError ? 'text-rose-500 border-rose-500/20 bg-rose-500/5' : 
+                'text-emerald-500/80 border-emerald-500/20 bg-emerald-500/5'
+            }`}>
+              {!isCloudEnabled ? <ShieldCheck size={14} /> : 
+               dbError ? <CloudOff size={14} className="animate-pulse" /> : 
+               <Cloud size={14} className="text-emerald-500" />} 
+              
+              {!isCloudEnabled ? 'LOCAL VAULT (ONLY)' : 
+               dbError ? (dbError.type === 'sync' ? 'SYNC INTERRUPTED' : 'CLOUD UNAVAILABLE') : 
+               'SECURE CLOUD SYNCED'}
             </span>
           </div>
-          <p className="opacity-30 font-mono tracking-tighter">SW-PRO v3.3.2 • SOLANA ON-CHAIN ANALYTICS</p>
+          <p className="opacity-30 font-mono tracking-tighter">SW-PRO v3.3.4 • SOLANA ON-CHAIN ANALYTICS</p>
         </div>
       </footer>
     </div>
